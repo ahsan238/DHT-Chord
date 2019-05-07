@@ -82,6 +82,9 @@ class Node:
         self.list_of_nodes_id = sorted(self.list_of_nodes_id)
         sorted(self.nodes_dict.keys())
 
+    # def remove_node_in_list(self,node_id,node_port):
+        
+
     def print_known_nodes_list(self):
         print '\n printing list of known nodes:'
         print self.nodes_dict
@@ -149,9 +152,10 @@ class Node:
         # print 'listening at port', self.port
         s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         s.bind((self.ip, self.port))
-        s.listen(50)
+        s.listen(100)
         while True:
             self.use_known_nodes_to_update_finger_table()
+            # self.ask_successor_for_sec_successor
             c,addr = s.accept()
             print 'connected to new node at address', addr[0],'and port', addr[1]
             protocol = str(c.recv(1024).decode('ascii'))
@@ -174,6 +178,11 @@ class Node:
 
             elif protocol == "_i_am_your_new_successor_":
                 self.receive_my_new_successor(c)
+                # self.ask_successor_for_sec_successor()
+
+
+            elif protocol == "_who is my second successor_":
+                self.give_pred_my_successor(c)
 
     def send_new_node_successor(self,c):
         c.sendall(str(self.id).encode('ascii'))
@@ -287,6 +296,7 @@ class Node:
         print 'from my new successor:', self.successor.id
         self.predecessor.id = int(new_pred_id)
         self.predecessor.port = int(new_pred_port)
+        self.ask_successor_for_sec_successor() #update second successor. ask from current successor
         s.close()
         
     def receive_new_predecessor(self,c):
@@ -301,6 +311,8 @@ class Node:
         self.updatefingertableEntry(new_pred_id,new_pred_port)
         print '3'
         old_pred_port = self.predecessor.port
+        #inform new pred of its new pred which is your old pred (e.g) then: A->B, now A->C->B
+        #so inform C about A
         c.sendall(str(self.predecessor.id).encode('ascii'))
         ack = c.recv(1024)
         print '4'
@@ -309,8 +321,8 @@ class Node:
         print '5'
         self.predecessor.id = new_pred_id
         self.predecessor.port = new_pred_port
-        #inform new pred of its new pred which is your old pred (e.g) then: A->B, now A->C->B
-        #so inform C of A
+        # if len(self.list_of_nodes_id) == 2: #means now there are two nodes in dht. you and your pred, then your pred is your successor
+        
         c.close()
         return old_pred_port
         #return old predecessor port
@@ -421,6 +433,42 @@ class Node:
         #node calls this whenever wants to leave
         #inform your pred and succ.
         #transfer files to succ -> work to be done on this
+        protocol = "_i am your pred, leaving_"
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(('',self.successor.port))
+        s.sendall(str(protocol).encode('ascii'))
+        ack = s.recv(1024)
+    
+    def ask_successor_for_sec_successor(self):
+        if self.successor.id == self.id:
+            'returning in ask succ for sec succ'
+            return
+        print 'asking successor',self.second_successor.id,'for its successor'
+        s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        s.connect(('',self.successor.port))
+        protocol = "_who is my second successor_"
+        s.sendall(str(protocol).encode('ascii'))
+        ack = s.recv(1024)
+        second_successor_id = int(s.recv(1024).decode('ascii'))
+        s.sendall('ack')
+        second_successor_port = int(s.recv(1024).decode('ascii'))
+        print 'my second successor is', second_successor_id
+        s.sendall('ack')        
+        self.second_successor.id = second_successor_id
+        self.second_successor.port = second_successor_port
+        s.close()
+
+    def give_pred_my_successor(self,c):
+        #this function is called whenever the predecessor asks the successor to return pred's
+        #second successor (meaning current node's successor)
+        c.sendall(str(self.successor.id).encode('ascii'))
+        ack = c.recv(1024)
+        c.sendall(str(self.successor.port).encode('ascii'))
+        ack = c.recv(1024)
+        c.close()
+
+
+
 
 
 def getObjectId(str):
@@ -453,6 +501,7 @@ def Main(port):
         while True:
             user_input = raw_input("enter 1 to view this node info, 2 to view fingertable,3 to view list of known nodes, 0 to exit \n")
             # system('clear')
+            node.ask_successor_for_sec_successor()
             if user_input == '1':
                 node.printThisNodeInfo()
             elif user_input == '2':
@@ -477,6 +526,7 @@ def Main(port):
         while True:
             user_input = raw_input("enter 1 to view this node info, 2 to view fingertable,3 to view list of known nodes, 0 to exit \n")
             # system('clear')
+            node.ask_successor_for_sec_successor()
             if user_input == '1':
                 node.printThisNodeInfo()
             elif user_input == '2':
