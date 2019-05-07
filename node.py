@@ -4,6 +4,7 @@ from thread import *
 import threading
 import socket
 import sys
+import os
 from os import system, name
 #test for FIRST = id=> 8
 #SECOND = id => 43
@@ -180,9 +181,15 @@ class Node:
                 self.receive_my_new_successor(c)
                 # self.ask_successor_for_sec_successor()
 
-
             elif protocol == "_who is my second successor_":
                 self.give_pred_my_successor(c)
+
+            elif protocol =="_i am your pred, leaving_":
+                self.handle_pred_leaving(c)
+            
+            elif protocol == "_i am your succ, leaving_" :
+                self.handle_succ_leaving(c)
+
 
     def send_new_node_successor(self,c):
         c.sendall(str(self.id).encode('ascii'))
@@ -438,7 +445,47 @@ class Node:
         s.connect(('',self.successor.port))
         s.sendall(str(protocol).encode('ascii'))
         ack = s.recv(1024)
-    
+        #inform successor of its new predecessor('in this case your pred)
+        s.sendall(str(self.predecessor.id).encode('ascii'))
+        ack = s.recv(1024)
+        s.sendall(str(self.predecessor.port).encode('ascii'))
+        ack = s.recv(1024)
+        s.close()
+
+        #now contact predeccesorr
+        s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        s.connect(('',self.predecessor.port))
+        protocol = "_i am your succ, leaving_"
+        s.sendall(str(protocol).encode('ascii'))
+        ack = s.recv(1024)
+        s.sendall(str(self.successor.id).encode('ascii'))
+        ack = s.recv(1024)
+        s.sendall(str(self.successor.port).encode('ascii'))
+        ack = s.recv(1024)
+        s.close()
+        
+
+    def handle_pred_leaving(self,c):
+        #this function is called whenever the pred is leaving the dht
+        new_pred_id = int(c.recv(1024).decode('ascii'))
+        c.sendall('ack')
+        new_pred_port = int(c.recv(1024).decode('ascii'))
+        c.sendall('ack')
+        self.predecessor.id = new_pred_id
+        self.predecessor.port = new_pred_port
+
+        c.close()
+
+    def handle_succ_leaving(self,c):
+        #this function is calledwhenever the pred is leaving the dht
+        new_succ_id = int(c.recv(1024).decode('ascii'))
+        c.sendall('ack')
+        new_succ_port = int(c.recv(1024).decode('ascii'))
+        c.sendall('ack')
+        self.successor.id = new_succ_id
+        self.successor.port = new_succ_port
+        c.close()
+
     def ask_successor_for_sec_successor(self):
         if self.successor.id == self.id:
             'returning in ask succ for sec succ'
@@ -499,7 +546,13 @@ def Main(port):
         
         # node.printThisNodeInfo()
         while True:
-            user_input = raw_input("enter 1 to view this node info, 2 to view fingertable,3 to view list of known nodes, 0 to exit \n")
+            print 'enter 1 to view this node info'
+            print '2 to view fingertable'
+            print '3 to view list of known nodes'
+            print '"c" to clear the screen'
+            print '0 to exit'
+            
+            user_input = raw_input()
             # system('clear')
             node.ask_successor_for_sec_successor()
             if user_input == '1':
@@ -508,10 +561,17 @@ def Main(port):
                 node.printFingerTable()
             elif user_input == '3':
                 node.print_known_nodes_list()
+            elif user_input == "c":
+                system('clear')
             elif user_input == '0':
+                # try:
+                #     node.leave_dht()
+                # except:
+                #     print "conn failed"
+                node.leave_dht()
+
+                os._exit(1)
                 break
-
-
 
     elif int(some_port) < 0:
         print 'incorrect input'
@@ -524,7 +584,13 @@ def Main(port):
         listening_new_node_thread = threading.Thread(target=node.listen_for_new_nodes)
         listening_new_node_thread.start()
         while True:
-            user_input = raw_input("enter 1 to view this node info, 2 to view fingertable,3 to view list of known nodes, 0 to exit \n")
+            print 'enter 1 to view this node info'
+            print '2 to view fingertable'
+            print '3 to view list of known nodes'
+            print '"c" to clear the screen'
+            print '0 to exit'
+            
+            user_input = raw_input()
             # system('clear')
             node.ask_successor_for_sec_successor()
             if user_input == '1':
@@ -533,7 +599,11 @@ def Main(port):
                 node.printFingerTable()
             elif user_input == '3':
                 node.print_known_nodes_list()
+            elif user_input == "c":
+                system('clear')
             elif user_input == '0':
+                node.leave_dht()
+                os._exit(1)
                 break
 
 
