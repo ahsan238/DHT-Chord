@@ -83,13 +83,17 @@ class Node:
         self.list_of_nodes_id = sorted(self.list_of_nodes_id)
         sorted(self.nodes_dict.keys())
 
-    # def remove_node_in_list(self,node_id,node_port):
-        
+    def remove_node_in_list(self,node_id,node_port):
+        if node_id in self.list_of_nodes_id:
+            self.list_of_nodes_id.remove(node_id)
+        if node_id in self.nodes_dict.keys():
+            del self.nodes_dict[node_id]    
 
     def print_known_nodes_list(self):
         print '\n printing list of known nodes:'
         print self.nodes_dict
         # print self.list_of_nodes_id
+        print self.list_of_nodes_id
             
 
     def printFingerTable(self):
@@ -471,10 +475,13 @@ class Node:
         c.sendall('ack')
         new_pred_port = int(c.recv(1024).decode('ascii'))
         c.sendall('ack')
+        #remove the entry from the finger table
+        self.remove_node_in_list(self.predecessor.id,self.predecessor.port)
+        self.use_known_nodes_to_update_finger_table()
         self.predecessor.id = new_pred_id
         self.predecessor.port = new_pred_port
-
         c.close()
+
 
     def handle_succ_leaving(self,c):
         #this function is calledwhenever the pred is leaving the dht
@@ -482,6 +489,9 @@ class Node:
         c.sendall('ack')
         new_succ_port = int(c.recv(1024).decode('ascii'))
         c.sendall('ack')
+        print 'removing successor from the list: ', self.successor.id
+        self.remove_node_in_list(self.successor.id,self.successor.port)
+        self.use_known_nodes_to_update_finger_table()
         self.successor.id = new_succ_id
         self.successor.port = new_succ_port
         c.close()
