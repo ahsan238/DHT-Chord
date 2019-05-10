@@ -6,6 +6,8 @@ import socket
 import sys
 import os
 from os import system, name
+import time
+
 #test for FIRST = id=> 8
 #SECOND = id => 43
 #THIRD = id => 0
@@ -160,6 +162,7 @@ class Node:
         s.listen(100)
         while True:
             self.use_known_nodes_to_update_finger_table()
+            # self.check_successor_state() #ensures that the successor is online. if not, update successor to sec_successor
             # self.ask_successor_for_sec_successor
             c,addr = s.accept()
             print 'connected to new node at address', addr[0],'and port', addr[1]
@@ -193,6 +196,12 @@ class Node:
             
             elif protocol == "_i am your succ, leaving_" :
                 self.handle_succ_leaving(c)
+
+            elif protocol == "_succ left suddenly, you my new succ_":
+                self.recv_new_pred_after_old_left(c)
+            
+            elif protocol == "your pred, routine check":
+                self.routine_reply_to_pred(c)
 
 
     def send_new_node_successor(self,c):
@@ -286,6 +295,8 @@ class Node:
         self.updatefingertableEntry(self.successor.id,self.successor.port)
 
     def contact_my_new_successor(self):
+        #this function is called the first time when a node joins. there is another similar function that get's called when a node leaves dht and its pred needs to contact its new successor
+        #it works almost similarly
         s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         # print self.successor.port
         s.connect(('',self.successor.port))
@@ -504,11 +515,13 @@ class Node:
         s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         s.connect(('',self.successor.port))
         protocol = "_who is my second successor_"
+        print 'connections established'
         s.sendall(str(protocol).encode('ascii'))
         ack = s.recv(1024)
         second_successor_id = int(s.recv(1024).decode('ascii'))
         s.sendall('ack')
         second_successor_port = int(s.recv(1024).decode('ascii'))
+        # print 'connections established'
         print 'my second successor is', second_successor_id
         s.sendall('ack')        
         self.second_successor.id = second_successor_id
@@ -524,8 +537,96 @@ class Node:
         ack = c.recv(1024)
         c.close()
 
+    def handle_successor_thread(self):
+        #a function called by the thread that ensures that whenever the successor changes, the states are changed accordingly
+        print 'handle successor thread'
+        while True:
+            time.sleep(10)
+            self.check_successor_state()
+
+    def check_successor_state(self):
+        #this function is routinely called to check if the successor is online. if not, automatically update the states
+        count = 0
+        if self.successor.id == self.id:
+            return
+        while True:
+            s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            try:
+                s.connect(('',self.successor.port))
+                protocol = "your pred, routine check"
+                s.sendall(str(protocol).encode('ascii'))
+                ack = s.recv(1024)
+                s.sendall(str('All ok').encode('ascii'))
+                ack = s.recv(1024)
+                s.close()
+                print 'My successor:',self.successor.id,'is active'
+                return
+            except:
+                count+=1
+                'successor is not replying...'
+                time.sleep(3)
+            if count == 3:
+                print 'successor did not respond 3 times. changing states'
+                s.close()
+                self.remove_node_in_list(self.successor.id,self.successor.port)
+                self.successor.id = self.second_successor.id
+                self.successor.port = self.second_successor.port
+                if self.successor.id == self.id:
+                    self.predecessor.id = self.id
+                    self.predecessor.port = self.port
+                    self.contact_new_successor_after_old_left()
+                    return
+
+    def routine_reply_to_pred(self,c):
+        #your predecessor routinely checks on you. Reply it
+        #if you fail to reply three times then the pred will assume you have left and will contact your successor
+        ack = c.recv(1024)
+        c.sendall('ack')
+        c.close()
 
 
+
+    def contact_new_successor_after_old_left(self):
+        #this function gets called when the successor has left and your second_successor is now your new successor
+        s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        s.connect(('',self.successor.port))
+        protocol = "_succ left suddenly, you my new succ_"
+        #pass on your credentials to the new successor
+        s.sendall(str(protocol).encode('ascii'))
+        ack = s.recv(1024)
+        s.sendall(str(self.id).encode('ascii'))
+        ack = s.recv(1024)
+        s.sendall(str(self.port))
+        ack = s.recv(1024)
+
+        #now receive your new second successor
+        new_sec_succ_id = int(s.recv(1024).decode('ascii'))
+        s.sendall('ack')
+        new_sec_succ_port = int(s.recv(1024).decode('ascii'))
+        s.sendall('ack')
+        self.second_successor.id = new_sec_succ_id
+        self.second_successor.port = new_sec_succ_port
+        s.close()
+        return
+
+    def recv_new_pred_after_old_left(self,c):
+        #this function is called when your pred left suddenly and the new pred is trying to contact you.
+        new_pred_id = int(c.recv(1024).decode('ascii'))
+        c.sendall('ack')
+        new_pred_port = int(c.recv(1024).decode('ascii'))
+        c.sendall('ack')
+        self.remove_node_in_list(self.predecessor.id,self.predecessor.port)
+        self.use_known_nodes_to_update_finger_table()
+
+        #now send your successor
+        c.sendall(str(self.successor.id).encode('ascii'))
+        ack = c.recv(1024)
+        c.sendall(str(self.successor.port).encode('ascii'))
+        ack = c.recv(1024)
+        self.predecessor.id = new_pred_id
+        self.predecessor.port = new_pred_port
+        c.close()
+        return
 
 
 def getObjectId(str):
@@ -553,12 +654,17 @@ def Main(port):
         # start_new_thread(node.listen_for_new_nodes,(,))
         listening_new_node_thread = threading.Thread(target=node.listen_for_new_nodes)
         listening_new_node_thread.start()
+        # check_succ_thread = threading.Thread(target = node.handle_successor_thread)
+        # check_succ_thread.start()
+        print 'handle successor thread'
+
         
         # node.printThisNodeInfo()
         while True:
             print 'enter 1 to view this node info'
             print '2 to view fingertable'
             print '3 to view list of known nodes'
+            print '4 check successor'
             print '"c" to clear the screen'
             print '0 to exit'
             
@@ -571,6 +677,8 @@ def Main(port):
                 node.printFingerTable()
             elif user_input == '3':
                 node.print_known_nodes_list()
+            elif user_input == '4':
+                node.check_successor_state()
             elif user_input == "c":
                 system('clear')
             elif user_input == '0':
@@ -593,10 +701,14 @@ def Main(port):
         node.contact_my_new_predecessor()
         listening_new_node_thread = threading.Thread(target=node.listen_for_new_nodes)
         listening_new_node_thread.start()
+        print 'welcome'
+        # check_succ_thread = threading.Thread(target = node.handle_successor_thread)
+        # check_succ_thread.start()
         while True:
             print 'enter 1 to view this node info'
             print '2 to view fingertable'
             print '3 to view list of known nodes'
+            print '4 check successor'
             print '"c" to clear the screen'
             print '0 to exit'
             
@@ -609,6 +721,8 @@ def Main(port):
                 node.printFingerTable()
             elif user_input == '3':
                 node.print_known_nodes_list()
+            elif user_input == '4':
+                node.check_successor_state()
             elif user_input == "c":
                 system('clear')
             elif user_input == '0':
@@ -618,7 +732,7 @@ def Main(port):
 
 
 if __name__ == "__main__":
-  port = sys.argv[1]
+  port = sys.argv[1] 
   # port = 12
   ip = localhost
   Main(port)
