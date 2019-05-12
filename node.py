@@ -8,13 +8,14 @@ import os
 from os import system, name
 import time
 
+
 #test for FIRST = id=> 8
 #SECOND = id => 43
 #THIRD = id => 0
 #FOURTH = id => 32
 M_bits = 6
 localhost = ''
-userid = sys.argv[2]
+# userid = sys.argv[2]
 
 class NodeInfo:
     def __init__(self,id=0,ip=0,port=0):
@@ -57,8 +58,8 @@ class Node:
     def __init__(self,ip,port):
         self.ip = localhost
         self.port = int(port)
-        # self.id = getObjectId((self.ip+str(self.port)))
-        self.id = int(userid)
+        self.id = getObjectId((self.ip+str(self.port)))
+        # self.id = int(userid)
         self.m_bits = M_bits
         self.fingerTable=[]
         self.successor = NodeInfo(self.id,self.ip,self.id)
@@ -66,6 +67,8 @@ class Node:
         self.predecessor = NodeInfo(self.id,self.ip,self.port)
         self.list_of_nodes_id = [] #this is a set of all the nodes (represented by their port numbers)
         self.nodes_dict = {}
+        self.files = []
+        self.file_dict = {}
         self.initialize()
 
     def initialize(self):
@@ -75,6 +78,25 @@ class Node:
         # print len(self.fingerTable)
         self.nodes_dict[self.id] = self.port
         self.list_of_nodes_id.append(self.id)
+        self.init_file_storage()
+
+    def init_file_storage(self):
+        # files = []
+        path = './'
+        for r,d,f in os.walk(path):
+            for file in f:
+                if '.txt' in file or '.mp4' in file:
+                    # files.append(os.path.join(r,file))
+                    self.files.append(file)
+                    self.file_dict[file] = getObjectId(file)
+        # return files
+
+    def print_stored_files(self):
+        # for x in self.files:
+        #     print x
+        for x in self.file_dict:
+            print x, ':' ,self.file_dict[x]
+
 
     def add_new_node_in_list(self,new_node_id,new_node_port):
         if new_node_id not in self.list_of_nodes_id:
@@ -92,7 +114,7 @@ class Node:
             del self.nodes_dict[node_id]    
 
     def print_known_nodes_list(self):
-        print '\n printing list of known nodes:'
+        # print '\n printing list of known nodes:'
         print self.nodes_dict
         # print self.list_of_nodes_id
         print self.list_of_nodes_id
@@ -104,7 +126,7 @@ class Node:
             print 'entry number: ', x
             self.fingerTable[x].printFTentry()
             print '\n\n'
-        print '-------end print finger table----------'
+        # print '-------end print finger table----------'
 
     def printThisNodeInfo(self):
         print 'id:', self.id
@@ -113,12 +135,12 @@ class Node:
         print 'successor', self.successor.id
         print 'second successor', self.second_successor.id
         print 'predecessor', self.predecessor.id
-        print '--------------print this node info--------------------'
+        # print '--------------print this node info--------------------'
 
     def get_successor(self,id):
         # print 'get_successor input:', id,'type:', type(id)
         if id == self.id: #case where id == your own key
-            print 'looking for myself'
+            # print 'looking for myself'
             return self.id, self.port
         for x in range(self.m_bits):
             if self.fingerTable[x].intervalfrom <= id and self.fingerTable[x].intervalto > id:
@@ -168,20 +190,20 @@ class Node:
             print 'connected to new node at address', addr[0],'and port', addr[1]
             protocol = str(c.recv(1024).decode('ascii'))
             c.sendall('ack')
-            print protocol
+            print 'incoming message:', protocol
 
             if protocol == "_send_my_successor_":
-                print 'entered 1'
+                # print 'entered 1'
                 self.send_new_node_successor(c)
 
             elif protocol =="_you are my new successor_":
-                print 'entered 2'
+                # print 'entered 2'
                 old_pred_port = self.receive_new_predecessor(c)
-                print 'entered 2.1'
+                # print 'entered 2.1'
                 self.inform_old_pred_of_its_new_successor(old_pred_port)
 
             elif protocol =="_you_have_a_new_successor_":
-                print 'entered 3'
+                # print 'entered 3'
                 self.change_to_new_successor(c)
 
             elif protocol == "_i_am_your_new_successor_":
@@ -209,13 +231,13 @@ class Node:
         ack = c.recv(1024)
         port_of_new_node = int(c.recv(1024).decode('ascii'))
         c.sendall('ack')
-        print 'port of new node:',port_of_new_node
+        # print 'port of new node:',port_of_new_node
         # print 'received 1'
         # ip_of_new_node = int(c.recv(1024).decode('ascii'))
         # print 'received 2'
         id_of_new_node = int(c.recv(1024).decode('ascii'))
         c.sendall('ack')
-        print 'id_of_new_node:', id_of_new_node
+        # print 'id_of_new_node:', id_of_new_node
         # new_node_successor_id, new_node_successor_port = self.get_successor(int(id_of_new_node))
         new_node_successor_id, new_node_successor_port = self.find_successor(int(id_of_new_node))
         c.sendall(str(new_node_successor_id).encode('ascii'))
@@ -227,10 +249,10 @@ class Node:
         # print 'received 3'
 
         for x in range(self.m_bits):
-            print 'sendalling entry:',x
+            # print 'sendalling entry:',x
             entry_start = int(c.recv(1024).decode('ascii'))
             c.sendall('ack')
-            print 'entry_start', entry_start, ':type:',type(entry_start)
+            # print 'entry_start', entry_start, ':type:',type(entry_start)
             # print 'done 1'
             entry_start = int(entry_start)
             entry_successor_id,entry_successor_port = self.find_successor(int(entry_start))
@@ -241,7 +263,7 @@ class Node:
             ack = c.recv(1024)
             # print 'done 3'
         # c.shutdown()
-        print 'closing connection'
+        # print 'closing connection'
         c.close()
         self.updatefingertableEntry(id_of_new_node,port_of_new_node)
         # thread.start_new_thread(give_successor_for_new_node,(self,c,))
@@ -276,7 +298,7 @@ class Node:
         self.add_new_node_in_list(my_successor_id,my_successor_port)
         # print 'sent 5'
         for i in range(self.m_bits):
-            print 'recieving entry:',i,'entry.start',self.fingerTable[i].start
+            # print 'recieving entry:',i,'entry.start',self.fingerTable[i].start
             s.sendall(str(self.fingerTable[i].start).encode('ascii'))
             ack = s.recv(1024)
             entry_successor_id = int(s.recv(1024).decode('ascii'))
@@ -314,8 +336,8 @@ class Node:
         new_pred_port = int(s.recv(1024).decode('ascii'))
         s.sendall('ack')
         self.add_new_node_in_list(new_pred_id,new_pred_port)
-        print 'i have just obtained my predecessor: ', new_pred_id
-        print 'from my new successor:', self.successor.id
+        # print 'i have just obtained my predecessor: ', new_pred_id
+        # print 'from my new successor:', self.successor.id
         self.predecessor.id = int(new_pred_id)
         self.predecessor.port = int(new_pred_port)
         self.ask_successor_for_sec_successor() #update second successor. ask from current successor
@@ -323,24 +345,24 @@ class Node:
         
     def receive_new_predecessor(self,c):
         #this function is called by a successor who has been contacted by a new node (its new predecessor)
-        print '1'
+        # print '1'
         new_pred_id = int(c.recv(1024).decode('ascii'))
         c.sendall('ack')
-        print '2'
+        # print '2'
         new_pred_port = int(c.recv(1024).decode('ascii'))
         c.sendall('ack')
         self.add_new_node_in_list(new_pred_id,new_pred_port)
         self.updatefingertableEntry(new_pred_id,new_pred_port)
-        print '3'
+        # print '3'
         old_pred_port = self.predecessor.port
         #inform new pred of its new pred which is your old pred (e.g) then: A->B, now A->C->B
         #so inform C about A
         c.sendall(str(self.predecessor.id).encode('ascii'))
         ack = c.recv(1024)
-        print '4'
+        # print '4'
         c.sendall(str(self.predecessor.port).encode('ascii'))
         ack = c.recv(1024)
-        print '5'
+        # print '5'
         self.predecessor.id = new_pred_id
         self.predecessor.port = new_pred_port
         # if len(self.list_of_nodes_id) == 2: #means now there are two nodes in dht. you and your pred, then your pred is your successor
@@ -350,7 +372,7 @@ class Node:
         #return old predecessor port
 
     def inform_old_pred_of_its_new_successor(self,old_pred_port):
-        print 'inform old pred of its new successor input:', old_pred_port
+        # print 'inform old pred of its new successor input:', old_pred_port
         protocol = "_you_have_a_new_successor_"
         if old_pred_port == self.port:
             print 'hahahah'
@@ -382,15 +404,15 @@ class Node:
     def updatefingertableEntry(self,id_of_new_node,port_of_new_node):
         #this method can be called whenever a new node joins
         #use new nodes ip and port to adjust it inside the fingertable
-        print '\n'
-        print 'id of new node:', id_of_new_node
-        print 'current node id', self.id
+        # print '\n'
+        # print 'id of new node:', id_of_new_node
+        # print 'current node id', self.id
         # print 'port of new node:', port_of_new_node
         for x in range(self.m_bits):
-            print 'x:',x
+            # print 'x:',x
             self.fingerTable[x].printFTentry()
-            print '2**(x)',2**(x)
-            print 'distance', ((id_of_new_node - self.id)%2**self.m_bits)
+            # print '2**(x)',2**(x)
+            # print 'distance', ((id_of_new_node - self.id)%2**self.m_bits)
             if id_of_new_node == self.id:
                 validate_distance = True
             else:
@@ -412,7 +434,7 @@ class Node:
                 self.fingerTable[x].successor.id = id_of_new_node
                 self.fingerTable[x].successor.port = port_of_new_node
             self.fingerTable[x].printFTentry()
-            print '\n\n'
+            # print '\n\n'
             
     def contact_my_new_predecessor(self):
         #this function is called as soon as a new node discovers its predecessor
@@ -500,7 +522,7 @@ class Node:
         c.sendall('ack')
         new_succ_port = int(c.recv(1024).decode('ascii'))
         c.sendall('ack')
-        print 'removing successor from the list: ', self.successor.id
+        # print 'removing successor from the list: ', self.successor.id
         self.remove_node_in_list(self.successor.id,self.successor.port)
         self.use_known_nodes_to_update_finger_table()
         self.successor.id = new_succ_id
@@ -511,11 +533,11 @@ class Node:
         if self.successor.id == self.id:
             'returning in ask succ for sec succ'
             return
-        print 'asking successor',self.second_successor.id,'for its successor'
+        # print 'asking successor',self.successor.id,'for its successor'
         s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         s.connect(('',self.successor.port))
         protocol = "_who is my second successor_"
-        print 'connections established'
+        # print 'connections established'
         s.sendall(str(protocol).encode('ascii'))
         ack = s.recv(1024)
         second_successor_id = int(s.recv(1024).decode('ascii'))
@@ -551,8 +573,10 @@ class Node:
             return
         while True:
             s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            print 'entered here'
             try:
                 s.connect(('',self.successor.port))
+                # print 'connection established'
                 protocol = "your pred, routine check"
                 s.sendall(str(protocol).encode('ascii'))
                 ack = s.recv(1024)
@@ -561,21 +585,24 @@ class Node:
                 s.close()
                 print 'My successor:',self.successor.id,'is active'
                 return
-            except:
+            except socket.error:
                 count+=1
-                'successor is not replying...'
+                print 'successor is not replying...'
                 time.sleep(3)
             if count == 3:
                 print 'successor did not respond 3 times. changing states'
                 s.close()
                 self.remove_node_in_list(self.successor.id,self.successor.port)
+                self.use_known_nodes_to_update_finger_table()
                 self.successor.id = self.second_successor.id
                 self.successor.port = self.second_successor.port
                 if self.successor.id == self.id:
                     self.predecessor.id = self.id
                     self.predecessor.port = self.port
-                    self.contact_new_successor_after_old_left()
+                    # self.contact_new_successor_after_old_left()
                     return
+                else:
+                    self.contact_new_successor_after_old_left()
 
     def routine_reply_to_pred(self,c):
         #your predecessor routinely checks on you. Reply it
@@ -587,6 +614,7 @@ class Node:
 
 
     def contact_new_successor_after_old_left(self):
+        
         #this function gets called when the successor has left and your second_successor is now your new successor
         s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         s.connect(('',self.successor.port))
@@ -661,16 +689,21 @@ def Main(port):
         
         # node.printThisNodeInfo()
         while True:
+            print '....................'
             print 'enter 1 to view this node info'
             print '2 to view fingertable'
             print '3 to view list of known nodes'
-            print '4 check successor'
+            print '4 to continue'
+            print '5 to leave suddenly'
+            print '6 to show self owned files'
             print '"c" to clear the screen'
             print '0 to exit'
+            print '....................'            
             
             user_input = raw_input()
             # system('clear')
-            node.ask_successor_for_sec_successor()
+            # node.check_successor_state()
+            # node.ask_successor_for_sec_successor()
             if user_input == '1':
                 node.printThisNodeInfo()
             elif user_input == '2':
@@ -679,6 +712,12 @@ def Main(port):
                 node.print_known_nodes_list()
             elif user_input == '4':
                 node.check_successor_state()
+                node.ask_successor_for_sec_successor()
+                continue
+            elif user_input == '5':
+                os._exit(1)     
+            elif user_input =='6':
+                node.print_stored_files()           
             elif user_input == "c":
                 system('clear')
             elif user_input == '0':
@@ -701,20 +740,24 @@ def Main(port):
         node.contact_my_new_predecessor()
         listening_new_node_thread = threading.Thread(target=node.listen_for_new_nodes)
         listening_new_node_thread.start()
-        print 'welcome'
+        # print 'welcome'
         # check_succ_thread = threading.Thread(target = node.handle_successor_thread)
         # check_succ_thread.start()
         while True:
+            print '....................'
             print 'enter 1 to view this node info'
             print '2 to view fingertable'
             print '3 to view list of known nodes'
-            print '4 check successor'
+            print '4 to continue'
+            print '5 to leave suddenly'
+            print '6 to show self owned files' 
             print '"c" to clear the screen'
             print '0 to exit'
+            print '....................'
             
             user_input = raw_input()
             # system('clear')
-            node.ask_successor_for_sec_successor()
+            # node.ask_successor_for_sec_successor()
             if user_input == '1':
                 node.printThisNodeInfo()
             elif user_input == '2':
@@ -723,6 +766,11 @@ def Main(port):
                 node.print_known_nodes_list()
             elif user_input == '4':
                 node.check_successor_state()
+                node.ask_successor_for_sec_successor()
+            elif user_input == '5':
+                os._exit(1)  
+            elif user_input =='6':
+                node.print_stored_files() 
             elif user_input == "c":
                 system('clear')
             elif user_input == '0':
