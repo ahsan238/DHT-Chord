@@ -97,6 +97,18 @@ class Node:
         for x in self.file_dict:
             print x, ':' ,self.file_dict[x]
 
+    def add_new_file_to_storage(self,filename):
+        if filename not in self.files:
+            self.files.append(filename)
+        if filename not in self.file_dict.keys():
+            self.file_dict[filename] = getObjectId(filename)
+
+    def remove_file_from_storage(self,filename):
+        if filename in self.files:
+            self.files.remove(filename)
+        if filename in self.file_dict.keys():
+            del self.file_dict[filename]
+
 
     def add_new_node_in_list(self,new_node_id,new_node_port):
         if new_node_id not in self.list_of_nodes_id:
@@ -205,10 +217,11 @@ class Node:
             elif protocol =="_you_have_a_new_successor_":
                 # print 'entered 3'
                 self.change_to_new_successor(c)
+                # self.share_all_files_with_successor()
 
             elif protocol == "_i_am_your_new_successor_":
                 self.receive_my_new_successor(c)
-                # self.ask_successor_for_sec_successor()
+                # self.share_all_files_with_successor()
 
             elif protocol == "_who is my second successor_":
                 self.give_pred_my_successor(c)
@@ -224,6 +237,12 @@ class Node:
             
             elif protocol == "your pred, routine check":
                 self.routine_reply_to_pred(c)
+
+            elif protocol == "_you are successor. keep my files_":
+                self.receive_all_files_from_predecessor(c)
+
+            elif protocol == "find me a file":
+                self.service_a_file_request(c)
 
 
     def send_new_node_successor(self,c):
@@ -474,6 +493,8 @@ class Node:
             self.fingerTable[x].successor.id,self.fingerTable[x].successor.port = self.find_successor(self.fingerTable[x].start)
 
     def leave_dht(self):
+        if self.successor.id == self.id:
+            return
         #node calls this whenever wants to leave
         #inform your pred and succ.
         #transfer files to succ -> work to be done on this
@@ -656,6 +677,184 @@ class Node:
         c.close()
         return
 
+    def share_all_files_with_successor(self):
+        if self.successor.id == self.id:
+            return
+        if len(self.files) < 1:
+            return
+        s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        s.connect(('',self.successor.port))
+        protocol = "_you are successor. keep my files_"
+        s.sendall(protocol.encode('ascii'))
+        ack = s.recv(1024)
+        for x in self.file_dict:
+            s.sendall(str(x).encode('ascii'))
+            response = str(s.recv(1024).decode('ascii'))
+            if response == "send":
+                #case when successor does not have this file
+                f = open(x,'rb')
+                l = f.read(1024)
+                while(l):
+                    # print 'Sending'
+                    s.sendall(l)
+                    ack = s.recv(1024)
+                    l = f.read(1024)
+                s.sendall("done") #sent when done with this file
+                ack = s.recv(1024)
+                f.close()
+                print x, 'sent successfully'
+            elif response == "have_file": # case when successor already has the file
+                'successor already has' , x
+                continue
+        s.sendall("all_done")
+        ack = s.recv(1024)
+        print 'closing connection'
+        s.close()
+
+    def receive_all_files_from_predecessor(self,c):
+        while True:
+            #receive file names, if have, reply 'have_file', if not, reply 'send'
+            #when pred says done, meaning a particular file sent
+            #when pred says all_done, meaning all files sent
+            file_name = str(c.recv(1024).decode('ascii'))
+            if file_name in self.files:
+                c.sendall(str('have_file').encode('ascii'))
+                print 'already have this file:', file_name
+                continue
+            if file_name == 'all_done':
+                c.sendall('ack')
+                print 'closing connection'
+                c.close()
+                return
+            else:
+                c.sendall(str('send').encode('ascii'))
+                with open(file_name,'wb') as file_to_receive:
+                    while True:
+                        data = c.recv(1024)
+                        c.sendall('ack')
+                        if data == 'done':
+                            self.add_new_file_to_storage(file_name)
+                            file_to_receive.close()
+                            print 'received this file:', file_name
+                            break
+                        if data == 'all_done':
+                            print 'received all files'
+                            c.close()
+                            return
+                        # print 'receiving'
+                        file_to_receive.write(data)
+
+    
+    def send_file_to_this_node(self,file_name,node_id,node_port):
+        self.add_new_node_in_list(node_id,node_id)
+        self.use_known_nodes_to_update_finger_table() 
+        protocol = "_have file you are looking for_"
+        s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        s.connect(('',node_port))
+        s.sendall(protocol.encode('ascii'))
+        ack = s.recv(1024)
+        f = open(file_name,'rb')
+        l = f.read(1024)
+        while l:
+            s.sendall(l)
+            ack = s.recv(1024)
+            l = f.read(1024)
+        s.sendall('done')
+        ack = s.recv(1024)
+        s.close()
+
+    def receive_file_from_node(self,c,filename):
+        with open(filename,'wb') as file_to_receive:
+            while True:
+                data = c.recv(1024)
+                if data == 'done':
+                    c.sendall('ack')
+                    c.close()
+                    file_to_receive.close()
+                    self.add_new_file_to_storage(filename)
+                    return
+                c.sendall('ack')
+                file_to_receive.write(data)
+        c.close()
+            
+    def request_a_file(self,filename,some_node_port):
+        servicing_node_port = some_node_port
+        while True:
+            s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            s.connect(('',servicing_node_port))
+            protocol = "find me a file"
+            s.sendall(protocol.encode('ascii'))
+            ack = s.recv(1024)
+
+            s.sendall(str(self.id).encode('ascii'))
+            ack = s.recv(1024)
+
+            s.sendall(str(self.port).encode('ascii'))
+            ack = s.recv(1024)
+            
+            s.sendall(filename.encode('ascii'))
+            response = s.recv(1024).decode('ascii')
+            if response == "I have it":
+                s.sendall('ack')
+                self.receive_file_from_node(s,filename)
+                return
+            else:
+                #else some_node will tell this node the id and port of the node that might have the file
+                s.sendall('ack')
+                servicing_node_id = int(s.recv(1024).decode('ascii'))
+                s.sendall('ack')
+                servicing_node_port = int(s.recv(1024).decode('ascii'))
+                s.sendall('ack')
+                self.add_new_node_in_list(servicing_node_id,servicing_node_port)
+                print some_node_port, 'didnt have the file, now contacting',servicing_node_id, 'at port', servicing_node_port
+                some_node_port = servicing_node_port
+                s.close()
+                continue
+
+    def service_a_file_request(self,c):
+        #this function is called whenever a node/clients to request a file
+        node_id = int(c.recv(1024).decode('ascii'))
+        c.sendall('ack')
+        node_port = int(c.recv(1024).decode('ascii'))
+        c.sendall('ack')
+        self.add_new_node_in_list(node_id,node_port)
+        filename = c.recv(1024).decode('ascii')
+        if filename in self.file_dict.keys():
+            response = "I have it"
+            c.sendall(response.encode('ascii'))
+            ack = c.recv(1024)
+            while True:
+                f = open(filename,'rb')
+                l = f.read(1024)
+                while l:
+                    c.sendall(l)
+                    ack = c.recv(1024)
+                    l = f.read(1024)
+                c.sendall('done')
+                ack = c.recv(1024)
+                c.close()
+                return
+
+        else:
+            response = "dont have it"
+            c.sendall(response)
+            ack = c.recv(1024)
+            c.sendall(str(self.successor.id).encode('ascii'))
+            ack = c.recv(1024)
+            c.sendall(str(self.successor.port).encode('ascii'))
+            ack = c.recv(1024)
+            c.close()
+            return
+
+            
+        
+
+        
+                
+            
+
+
+
 
 def getObjectId(str):
     hashed = sha1(str).hexdigest()
@@ -696,6 +895,8 @@ def Main(port):
             print '4 to continue'
             print '5 to leave suddenly'
             print '6 to show self owned files'
+            print '7 to share all files with successor'
+            print '8 to download a file'
             print '"c" to clear the screen'
             print '0 to exit'
             print '....................'            
@@ -717,7 +918,20 @@ def Main(port):
             elif user_input == '5':
                 os._exit(1)     
             elif user_input =='6':
-                node.print_stored_files()           
+                node.print_stored_files()   
+            elif user_input =='7':
+                node.share_all_files_with_successor()
+            elif user_input == '8':
+                system('clear')
+                file_name = raw_input('\n Enter the filename ')
+                if node.successor.id != node.id:
+                    some_node_port = int(raw_input('\n Enter port of a node you want to send this request to. Press 0 to send it to your successor '))
+                    if some_node_port == '0':
+                        node.request_a_file(file_name,node.successor.port)
+                    else:
+                        node.request_a_file(file_name,some_node_port)
+                else:
+                    node.request_a_file(file_name,node.successor.port)        
             elif user_input == "c":
                 system('clear')
             elif user_input == '0':
@@ -740,6 +954,8 @@ def Main(port):
         node.contact_my_new_predecessor()
         listening_new_node_thread = threading.Thread(target=node.listen_for_new_nodes)
         listening_new_node_thread.start()
+        # print 'len files = ',len(node.files)
+        # node.share_all_files_with_successor()
         # print 'welcome'
         # check_succ_thread = threading.Thread(target = node.handle_successor_thread)
         # check_succ_thread.start()
@@ -751,6 +967,8 @@ def Main(port):
             print '4 to continue'
             print '5 to leave suddenly'
             print '6 to show self owned files' 
+            print '7 to share all files with successor'
+            print '8 to download a file'
             print '"c" to clear the screen'
             print '0 to exit'
             print '....................'
@@ -770,7 +988,21 @@ def Main(port):
             elif user_input == '5':
                 os._exit(1)  
             elif user_input =='6':
-                node.print_stored_files() 
+                node.print_stored_files()
+            elif user_input =='7':
+                node.share_all_files_with_successor() 
+            elif user_input == '8':
+                system('clear')
+                file_name = raw_input('\n Enter the filename ')
+                if node.successor.id != node.id:
+                    some_node_port = int(raw_input('\n Enter port of a node you want to send this request to. Press 0 to send it to your successor '))
+                    if some_node_port == '0':
+                        node.request_a_file(file_name,node.successor.port)
+                    else:
+                        node.request_a_file(file_name,some_node_port)
+                else:
+                    node.request_a_file(file_name,node.successor.port)
+                
             elif user_input == "c":
                 system('clear')
             elif user_input == '0':
@@ -784,7 +1016,4 @@ if __name__ == "__main__":
   # port = 12
   ip = localhost
   Main(port)
-  # node = Node(ip,str(port))
-  # node.printThisNodeInfo()
-  # node.printFingerTable()
-  # node.get_successor(9)
+
