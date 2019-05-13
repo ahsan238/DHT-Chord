@@ -243,6 +243,9 @@ class Node:
 
             elif protocol == "find me a file":
                 self.service_a_file_request(c)
+            
+            elif protocol == '_this file belongs to you_':
+                self.receive_request_for_uploading(c)
 
 
     def send_new_node_successor(self,c):
@@ -846,12 +849,119 @@ class Node:
             c.close()
             return
 
+    def reset_file_log(self):
+        self.files = []
+        self.file_dict = {}
+
+    def check_for_new_file_in_directory(self):
+        files = []
+        path = './'
+        self.reset_file_log()
+        for r,d,f in os.walk(path):
+            for file in f:
+                if '.txt' in file or '.mp4' in file:
+                    # files.append(os.path.join(r,file))
+                    # self.add_new_file_to_storage(file)
+                    self.service_an_upload_request(file)
+                    # file_dict[file] = getObjectId(file)
+
+
+    def service_an_upload_request(self,file_name):
+        #this function is called whenever a new file is added to the current node's directory
+        #first check if this file should be kept locally based on id
+        #otherwise send it to the node whose id is just lower than the id of the file
+        file_id = getObjectId(file_name)
+        succ_node_id,succ_node_port = self.find_successor(file_id)
+        print 'servicing upload request'
+        print file_name,': ',file_id
+        print 'going to:',succ_node_id
+        node_id = succ_node_id
+        node_port = succ_node_port
+        if succ_node_id == self.id:
+            print 'i am keeping this file', file_name
+            self.add_new_file_to_storage(file_name)
+            return
+
+        while True:
+            s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            s.connect(('',node_port))
+            protocol = '_this file belongs to you_'
+
+            s.sendall(str(protocol).encode('ascii'))
+            ack = s.recv(1024)
             
-        
+            s.sendall(str(file_name).encode('ascii'))
+            # ack = s.recv(1024)
+
+            response = s.recv(1024).decode('ascii')
+
+            if response == 'send':
+                print 'sending file',file_name,'with id:',file_id
+                print 'to node:', node_port
+                f = open(file_name,'rb')
+                l = f.read(1024)
+                while l:
+                    s.sendall(l)
+                    ack = s.recv(1024)
+                    l = f.read(1024)
+                s.sendall('done')
+                ack = s.recv(1024)
+                f.close()
+                s.close()
+                return
+            elif response == 'already have it':
+                s.sendall('ack')
+                s.close()
+                return
+            else:
+                #case when the file belongs to some other node
+                s.sendall('ack')
+                some_other_node_id = s.recv(1024).decode('ascii')
+                s.sendall('ack')
+                some_other_node_port = s.recv(1024).decode('ascii')
+                s.sendall('ack')
+                s.close()
+                node_id = some_other_node_id
+                node_port = some_other_node_port
+                print 'this file belongs to some other node'
+                self.add_new_node_in_list(node_id,node_port)
+
+
+    def receive_request_for_uploading(self,c):
+        file_name = c.recv(1024).decode('ascii')
+        if file_name in self.file_dict.keys():
+            c.sendall('already have it'.encode('ascii'))
+            ack = c.recv(1024)
+            c.close()
+            return
+        else:
+            file_id = getObjectId(file_name)
+            file_succ_node_id,file_succ_node_port = self.find_successor(file_id)
+            if self.id == file_succ_node_id:
+                c.sendall('send'.encode('ascii'))
+                with open(file_name,'wb') as file_to_receive:
+                    while True:
+                        data = c.recv(1024)
+                        if data == 'done':
+                            c.sendall('ack')
+                            self.add_new_file_to_storage(file_name)
+                            file_to_receive.close()
+                            c.close()
+                            return
+                        c.sendall('ack')
+                        file_to_receive.write(data)
+            else:
+                c.sendall('send to other node')
+                ack = c.recv(1024)
+                c.sendall(str(file_succ_node_id).encode('ascii'))
+                ack = c.recv(1024)
+                c.sendall(str(file_succ_node_port).encode('ascii'))
+                ack = c.recv(1024)
+                c.close()
+                return
+
 
         
-                
-            
 
 
 
@@ -897,6 +1007,7 @@ def Main(port):
             print '6 to show self owned files'
             print '7 to share all files with successor'
             print '8 to download a file'
+            print '9 to check for new files to upload'
             print '"c" to clear the screen'
             print '0 to exit'
             print '....................'            
@@ -931,7 +1042,10 @@ def Main(port):
                     else:
                         node.request_a_file(file_name,some_node_port)
                 else:
-                    node.request_a_file(file_name,node.successor.port)        
+                    node.request_a_file(file_name,node.successor.port)     
+
+            elif user_input == '9':
+                node.check_for_new_file_in_directory()   
             elif user_input == "c":
                 system('clear')
             elif user_input == '0':
@@ -969,6 +1083,7 @@ def Main(port):
             print '6 to show self owned files' 
             print '7 to share all files with successor'
             print '8 to download a file'
+            print '9 to check for new files to upload'
             print '"c" to clear the screen'
             print '0 to exit'
             print '....................'
@@ -1002,6 +1117,9 @@ def Main(port):
                         node.request_a_file(file_name,some_node_port)
                 else:
                     node.request_a_file(file_name,node.successor.port)
+
+            elif user_input == '9':
+                node.check_for_new_file_in_directory()
                 
             elif user_input == "c":
                 system('clear')
